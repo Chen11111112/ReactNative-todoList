@@ -25,3 +25,4 @@ npx expo start --tunnel
 使用 iPhone 相機或 Expo Go 掃描 QR Code。
 
 
+你好
