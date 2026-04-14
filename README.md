@@ -6,3 +6,6 @@
 * 11256034 陳潔如 - 組員 : 新增預設列表、套件
 
 <img width="1156" height="837" alt="image" src="https://github.com/user-attachments/assets/6049782c-c528-43a4-93f6-96134da14332" />
+
+# Fork 紀錄
+<img width="1919" height="644" alt="image" src="https://github.com/user-attachments/assets/8154cfd4-d5a8-4f00-a607-6d2aa8a6e5f4" />
