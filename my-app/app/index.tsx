@@ -1,10 +1,9 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, Modal, Alert } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { Alert, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-// 預設提供選擇的顏色
 const LIST_COLORS = ['#007AFF', '#34C759', '#FF9500', '#FF3B30', '#AF52DE', '#FF2D55'];
 
 interface Category {
@@ -17,14 +16,13 @@ interface Category {
 export default function HomeScreen() {
   const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
-  
-  // Modal 相關狀態
+  const [searchQuery, setSearchQuery] = useState(''); // 搜尋狀態
+
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempTitle, setTempTitle] = useState('');
   const [tempColor, setTempColor] = useState(LIST_COLORS[0]);
 
-  // 每次畫面進入焦點時，重新讀取分類與動態計算數量
   useFocusEffect(
     useCallback(() => {
       loadCategories();
@@ -36,7 +34,6 @@ export default function HomeScreen() {
       const storedCats = await AsyncStorage.getItem('@categories');
       let parsedCats: Category[] = storedCats ? JSON.parse(storedCats) : [];
 
-      // 動態讀取每個分類底下的 todo 數量
       const updatedCats = await Promise.all(parsedCats.map(async (cat) => {
         const storedTodos = await AsyncStorage.getItem(`@todos_${cat.id}`);
         const todos = storedTodos ? JSON.parse(storedTodos) : [];
@@ -48,6 +45,11 @@ export default function HomeScreen() {
       console.error('讀取失敗', e);
     }
   };
+
+  // 實作搜尋過濾
+  const filteredCategories = categories.filter(cat =>
+    cat.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const openModal = (category?: Category) => {
     if (category) {
@@ -69,14 +71,11 @@ export default function HomeScreen() {
     }
 
     let newCategories = [...categories];
-
     if (editingId) {
-      // 編輯模式
       newCategories = newCategories.map(cat => 
         cat.id === editingId ? { ...cat, title: tempTitle, color: tempColor } : cat
       );
     } else {
-      // 新增模式
       const newCategory = {
         id: Date.now().toString(),
         title: tempTitle,
@@ -90,6 +89,7 @@ export default function HomeScreen() {
       await AsyncStorage.setItem('@categories', JSON.stringify(newCategories));
       setCategories(newCategories);
       setModalVisible(false);
+      setSearchQuery(''); // 儲存後清空搜尋
     } catch (e) {
       console.error('儲存失敗', e);
     }
@@ -104,7 +104,7 @@ export default function HomeScreen() {
         onPress: async () => {
           const newCategories = categories.filter(cat => cat.id !== id);
           await AsyncStorage.setItem('@categories', JSON.stringify(newCategories));
-          await AsyncStorage.removeItem(`@todos_${id}`); // 同時刪除該清單下的 todos
+          await AsyncStorage.removeItem(`@todos_${id}`);
           setCategories(newCategories);
         }
       }
@@ -115,8 +115,20 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Text style={styles.header}>我的列表</Text>
 
+      {/* 搜尋欄 */}
+      <View style={styles.searchBarContainer}>
+        <Ionicons name="search" size={18} color="#8E8E93" />
+        <TextInput
+          style={styles.searchBarInput}
+          placeholder="搜尋清單"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          clearButtonMode="while-editing"
+        />
+      </View>
+
       <FlatList
-        data={categories}
+        data={filteredCategories}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TouchableOpacity
@@ -127,7 +139,7 @@ export default function HomeScreen() {
                 params: { id: item.id, title: item.title, color: item.color } 
               })
             }
-            onLongPress={() => openModal(item)} // 長按觸發編輯
+            onLongPress={() => openModal(item)}
           >
             <View style={styles.leftSection}>
               <Ionicons name="list-circle" size={30} color={item.color || "#007AFF"} />
@@ -147,12 +159,11 @@ export default function HomeScreen() {
         <Text style={styles.addButtonText}>新增列表</Text>
       </TouchableOpacity>
 
-      {/* 彈跳視窗 Modal */}
+      {/* Modal 保持不變 */}
       <Modal visible={modalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <div style={styles.modalContent as any}>
             <Text style={styles.modalTitle}>{editingId ? '編輯清單' : '新增清單'}</Text>
-            
             <TextInput
               style={styles.modalInput}
               placeholder="清單名稱"
@@ -160,7 +171,6 @@ export default function HomeScreen() {
               onChangeText={setTempTitle}
               autoFocus
             />
-
             <View style={styles.colorPicker}>
               {LIST_COLORS.map(color => (
                 <TouchableOpacity
@@ -170,7 +180,6 @@ export default function HomeScreen() {
                 />
               ))}
             </View>
-
             <View style={styles.modalActions}>
               {editingId && (
                 <TouchableOpacity style={styles.deleteButton} onPress={() => { setModalVisible(false); deleteCategory(editingId); }}>
@@ -185,7 +194,7 @@ export default function HomeScreen() {
                 <Text style={styles.saveButtonText}>儲存</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </div>
         </View>
       </Modal>
     </View>
@@ -194,7 +203,17 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F2F2F7', paddingHorizontal: 20 },
-  header: { fontSize: 34, fontWeight: 'bold', marginTop: 60, marginBottom: 20 },
+  header: { fontSize: 34, fontWeight: 'bold', marginTop: 60, marginBottom: 10 },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E5E5EA',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginBottom: 20,
+  },
+  searchBarInput: { flex: 1, marginLeft: 8, fontSize: 17 },
   categoryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFFFFF', padding: 15, borderRadius: 12, marginBottom: 10 },
   leftSection: { flexDirection: 'row', alignItems: 'center' },
   categoryTitle: { fontSize: 17, marginLeft: 10, fontWeight: '500' },
@@ -202,8 +221,6 @@ const styles = StyleSheet.create({
   countText: { fontSize: 17, color: '#8E8E93', marginRight: 5 },
   addButton: { flexDirection: 'row', alignItems: 'center', position: 'absolute', bottom: 40, left: 20 },
   addButtonText: { color: '#007AFF', fontSize: 17, fontWeight: '600', marginLeft: 5 },
-  
-  // Modal 樣式
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '80%', backgroundColor: 'white', borderRadius: 14, padding: 20, alignItems: 'center' },
   modalTitle: { fontSize: 18, fontWeight: '600', marginBottom: 15 },
