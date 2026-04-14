@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react'; // 1. 引入 useRef
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Todo {
   id: string;
@@ -10,32 +11,64 @@ interface Todo {
 }
 
 export default function TodoListScreen() {
-  const { title, color } = useLocalSearchParams<{ title: string; color: string }>();
+  // 確實取得 id 作為儲存時的辨識 Key
+  const { id, title, color } = useLocalSearchParams<{ id: string; title: string; color: string }>();
   const [todos, setTodos] = useState<Todo[]>([]);
   
-  // 2. 建立一個 Ref 容器，用來存放所有的 TextInput 引用
   const inputRefs = useRef<{ [key: string]: TextInput | null }>({});
+
+  // 1. 畫面載入時，從 AsyncStorage 讀取資料
+  useEffect(() => {
+    const loadTodos = async () => {
+      try {
+        const storedTodos = await AsyncStorage.getItem(`@todos_${id}`);
+        if (storedTodos) {
+          setTodos(JSON.parse(storedTodos));
+        }
+      } catch (e) {
+        console.error('讀取 Todos 失敗', e);
+      }
+    };
+    loadTodos();
+  }, [id]);
+
+  // 2. 自訂一個儲存與更新 state 的函數
+  const saveAndSetTodos = async (newTodos: Todo[]) => {
+    setTodos(newTodos);
+    try {
+      await AsyncStorage.setItem(`@todos_${id}`, JSON.stringify(newTodos));
+    } catch (e) {
+      console.error('儲存 Todos 失敗', e);
+    }
+  };
 
   const addTodo = () => {
     const newId = Date.now().toString();
     const newTodo = { id: newId, text: '', completed: false };
     
-    setTodos([...todos, newTodo]);
+    // 使用新的儲存函數
+    saveAndSetTodos([...todos, newTodo]);
 
-    // 3. 重點：等 React 渲染完新項目後，讓該項目聚焦
     setTimeout(() => {
       if (inputRefs.current[newId]) {
         inputRefs.current[newId]?.focus();
       }
-    }, 100); // 給予 100ms 的緩衝時間確保組件已掛載
+    }, 100); 
   };
 
-  const toggleTodo = (id: string) => {
-    setTodos(todos.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+  const toggleTodo = (todoId: string) => {
+    const newTodos = todos.map(t => t.id === todoId ? { ...t, completed: !t.completed } : t);
+    saveAndSetTodos(newTodos);
   };
 
-  const deleteTodo = (id: string) => {
-    setTodos(todos.filter(t => t.id !== id));
+  const deleteTodo = (todoId: string) => {
+    const newTodos = todos.filter(t => t.id !== todoId);
+    saveAndSetTodos(newTodos);
+  };
+
+  const updateTodoText = (todoId: string, newText: string) => {
+    const newTodos = todos.map(t => t.id === todoId ? { ...t, text: newText } : t);
+    saveAndSetTodos(newTodos);
   };
 
   return (
@@ -58,15 +91,11 @@ export default function TodoListScreen() {
             </TouchableOpacity>
             
             <TextInput 
-              // 4. 將每個 TextInput 的引用存入 inputRefs 物件中
-              ref={(el) => (inputRefs.current[item.id] = el)}
+              ref={(el) => {inputRefs.current[item.id] = el}}
               style={[styles.todoText, item.completed && styles.completedText]}
               value={item.text}
               placeholder="輸入內容..."
-              onChangeText={(newText) => {
-                setTodos(todos.map(t => t.id === item.id ? { ...t, text: newText } : t));
-              }}
-              // 按下鍵盤完成時，可以自動新增下一行 (選配)
+              onChangeText={(newText) => updateTodoText(item.id, newText)}
               onSubmitEditing={addTodo}
             />
             
