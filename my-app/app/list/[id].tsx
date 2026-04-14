@@ -11,13 +11,12 @@ interface Todo {
 }
 
 export default function TodoListScreen() {
-  // 確實取得 id 作為儲存時的辨識 Key
   const { id, title, color } = useLocalSearchParams<{ id: string; title: string; color: string }>();
   const [todos, setTodos] = useState<Todo[]>([]);
+  const [searchQuery, setSearchQuery] = useState(''); // 搜尋狀態
   
   const inputRefs = useRef<{ [key: string]: TextInput | null }>({});
 
-  // 1. 畫面載入時，從 AsyncStorage 讀取資料
   useEffect(() => {
     const loadTodos = async () => {
       try {
@@ -32,7 +31,11 @@ export default function TodoListScreen() {
     loadTodos();
   }, [id]);
 
-  // 2. 自訂一個儲存與更新 state 的函數
+  // 過濾 Todo 列表
+  const filteredTodos = todos.filter(todo =>
+    todo.text.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   const saveAndSetTodos = async (newTodos: Todo[]) => {
     setTodos(newTodos);
     try {
@@ -45,9 +48,8 @@ export default function TodoListScreen() {
   const addTodo = () => {
     const newId = Date.now().toString();
     const newTodo = { id: newId, text: '', completed: false };
-    
-    // 使用新的儲存函數
     saveAndSetTodos([...todos, newTodo]);
+    setSearchQuery(''); // 新增時清空搜尋，否則新項目可能因為不符合關鍵字而被隱藏
 
     setTimeout(() => {
       if (inputRefs.current[newId]) {
@@ -75,10 +77,22 @@ export default function TodoListScreen() {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
       <View style={styles.header}>
         <Text style={[styles.title, { color: color }]}>{title}</Text>
+        
+        {/* 內頁搜尋欄 */}
+        <View style={styles.searchBarContainer}>
+          <Ionicons name="search" size={16} color="#8E8E93" />
+          <TextInput
+            style={styles.searchBarInput}
+            placeholder={`搜尋 ${title} 中的項目`}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            clearButtonMode="while-editing"
+          />
+        </View>
       </View>
 
       <FlatList
-        data={todos}
+        data={filteredTodos} // 使用過濾後的資料
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
           <View style={styles.todoItem}>
@@ -117,8 +131,17 @@ export default function TodoListScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'white' },
-  header: { padding: 20 },
-  title: { fontSize: 34, fontWeight: 'bold' },
+  header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
+  title: { fontSize: 34, fontWeight: 'bold', marginBottom: 10 },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  searchBarInput: { flex: 1, marginLeft: 6, fontSize: 15 },
   todoItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -136,5 +159,4 @@ const styles = StyleSheet.create({
     backgroundColor: 'white' 
   },
   addButton: { flexDirection: 'row', alignItems: 'center' },
-  addText: { fontSize: 17, marginLeft: 10, fontWeight: '600' }
 });
