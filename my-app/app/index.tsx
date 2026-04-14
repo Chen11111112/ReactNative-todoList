@@ -18,6 +18,15 @@ export default function HomeScreen() {
   const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
   
+  // 總計資料狀態
+  const [stats, setStats] = useState({
+    today: 0,
+    scheduled: 0,
+    all: 0,
+    flagged: 0,
+    completed: 0,
+  });
+  
   // Modal 相關狀態
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -36,14 +45,42 @@ export default function HomeScreen() {
       const storedCats = await AsyncStorage.getItem('@categories');
       let parsedCats: Category[] = storedCats ? JSON.parse(storedCats) : [];
 
+      let totalAll = 0;
+      let totalCompleted = 0;
+      let totalToday = 0;
+      let totalScheduled = 0;
+      const todayStr = new Date().toISOString().split('T')[0];
+
       // 動態讀取每個分類底下的 todo 數量
       const updatedCats = await Promise.all(parsedCats.map(async (cat) => {
         const storedTodos = await AsyncStorage.getItem(`@todos_${cat.id}`);
         const todos = storedTodos ? JSON.parse(storedTodos) : [];
-        return { ...cat, count: todos.length };
+        
+        // 重新計算總計數據
+        todos.forEach((t: any) => {
+          totalAll++;
+          if (t.completed) {
+            totalCompleted++;
+          } else {
+            // 未完成的項目才計入「今天」和「已排程」
+            if (t.date === todayStr) totalToday++;
+            if (t.date) totalScheduled++; 
+          }
+        });
+
+        // 清單旁邊的數字只顯示「未完成」的數量
+        return { ...cat, count: todos.filter((t: any) => !t.completed).length }; 
       }));
 
       setCategories(updatedCats);
+      setStats({
+        today: totalToday,
+        scheduled: totalScheduled,
+        all: totalAll,
+        flagged: 0,       
+        completed: totalCompleted,
+      });
+
     } catch (e) {
       console.error('讀取失敗', e);
     }
@@ -106,18 +143,88 @@ export default function HomeScreen() {
           await AsyncStorage.setItem('@categories', JSON.stringify(newCategories));
           await AsyncStorage.removeItem(`@todos_${id}`); // 同時刪除該清單下的 todos
           setCategories(newCategories);
+          loadCategories(); // 重新計算總數
         }
       }
     ]);
   };
 
+  // 渲染上方預設分類卡片的區塊
+  const renderListHeader = () => (
+    <View style={styles.topSection}>
+      <View style={styles.gridRow}>
+        <TouchableOpacity 
+          style={[styles.dashboardCard, { backgroundColor: '#007AFF', marginRight: 15 }]}
+          onPress={() => router.push({ pathname: '/filter/[type]', params: { type: 'today', title: '今天', color: '#007AFF' } })}
+        >
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="calendar-outline" size={24} color="#007AFF" />
+            </View>
+            <Text style={styles.cardCount}>{stats.today}</Text>
+          </View>
+          <Text style={styles.cardTitle}>今天</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.dashboardCard, { backgroundColor: '#FF3B30' }]}
+          onPress={() => router.push({ pathname: '/filter/[type]', params: { type: 'scheduled', title: '已排程', color: '#FF3B30' } })}
+        >
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="calendar" size={24} color="#FF3B30" />
+            </View>
+            <Text style={styles.cardCount}>{stats.scheduled}</Text>
+          </View>
+          <Text style={styles.cardTitle}>已排程</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.gridRow}>
+        <TouchableOpacity 
+          style={[styles.dashboardCard, { backgroundColor: '#48484A', marginRight: 15 }]}
+          onPress={() => router.push({ pathname: '/filter/[type]', params: { type: 'all', title: '全部', color: '#48484A' } })}
+        >
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.iconContainer}>
+              {/* 這裡已修正為正確的 icon 名稱 */}
+              <Ionicons name="file-tray-outline" size={24} color="#48484A" />
+            </View>
+            <Text style={styles.cardCount}>{stats.all}</Text>
+          </View>
+          <Text style={styles.cardTitle}>全部</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.dashboardCard, { backgroundColor: '#8E8E93'}]}
+          onPress={() => router.push({ pathname: '/filter/[type]', params: { type: 'completed', title: '已完成', color: '#8E8E93' } })}
+        >
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="checkmark" size={24} color="#8E8E93" />
+            </View>
+            <Text style={styles.cardCount}>{stats.completed}</Text>
+          </View>
+          <Text style={styles.cardTitle}>已完成</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.gridRow}>
+        
+      </View>
+
+      <Text style={styles.header}>我的列表</Text>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>我的列表</Text>
-
       <FlatList
+        ListHeaderComponent={renderListHeader}
         data={categories}
         keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 100 }} // 預留底部按鈕空間
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.categoryItem}
@@ -194,7 +301,17 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F2F2F7', paddingHorizontal: 20 },
-  header: { fontSize: 34, fontWeight: 'bold', marginTop: 60, marginBottom: 20 },
+  
+  // Dashboard 區塊樣式
+  topSection: { marginTop: 60 },
+  gridRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+  dashboardCard: { flex: 1, borderRadius: 12, padding: 12, height: 90, justifyContent: 'space-between' },
+  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  iconContainer: { backgroundColor: 'white', borderRadius: 20, width: 32, height: 32, justifyContent: 'center', alignItems: 'center' },
+  cardCount: { fontSize: 28, fontWeight: 'bold', color: 'white' },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: 'white' },
+
+  header: { fontSize: 22, fontWeight: 'bold', marginTop: 20, marginBottom: 15, color: '#000' },
   categoryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFFFFF', padding: 15, borderRadius: 12, marginBottom: 10 },
   leftSection: { flexDirection: 'row', alignItems: 'center' },
   categoryTitle: { fontSize: 17, marginLeft: 10, fontWeight: '500' },
